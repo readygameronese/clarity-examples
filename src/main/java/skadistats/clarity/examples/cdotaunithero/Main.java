@@ -1,7 +1,10 @@
 package skadistats.clarity.examples.cdotaunithero;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import skadistats.clarity.event.Insert;
 import skadistats.clarity.model.DTClass;
 import skadistats.clarity.model.Entity;
@@ -23,10 +26,16 @@ import java.util.Map;
 
 import static java.lang.String.format;
 
+import java.io.FileWriter;
+import java.io.IOException;
+
 @UsesEntities
 public class Main {
 
+    private final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+    private final Map<Integer, List<Map<String, Object>>> heroUpdates = new HashMap<>();
     private final Logger log = LoggerFactory.getLogger(Main.class.getPackage().getClass());
+
 
     @Insert
     private DTClasses dtClasses;
@@ -68,13 +77,14 @@ public class Main {
                 if (lookup == null) continue;
                 if (lookup.isAnyFieldChanged(e, changedFieldPaths, nChangedFieldPaths)) {
                     lookup.updateFieldValues(e, changedFieldPaths);
-        
-                    System.out.println("Player " + p + " hero data updated:");
+
+                    Map<String, Object> stringFieldValues = new HashMap<>();
                     for (Map.Entry<FieldPath, Object> entry : lookup.getFieldValues().entrySet()) {
                         // Get field name from DTClass
                         String fieldName = e.getDtClass().getNameForFieldPath(entry.getKey());
-                        System.out.println(fieldName + ": " + entry.getValue()); 
+                        stringFieldValues.put(fieldName, entry.getValue()); // Use fieldName as key
                     }
+                    heroUpdates.computeIfAbsent(p, k -> new ArrayList<>()).add(stringFieldValues);
                 }
             }
         }
@@ -93,9 +103,17 @@ public class Main {
         runner.runWith(this);
         long tMatch = System.currentTimeMillis() - tStart;
         log.info("total time taken: {}s", (tMatch) / 1000.0);
+
+        // Save all hero updates to a single JSON file named "final_path.json"
+        String filename = "final_path.json";
+        try (FileWriter file = new FileWriter(filename)) {
+            objectMapper.writeValue(file, heroUpdates); 
+        } catch (IOException ex) {
+            log.error("Error writing JSON file: {}", ex.getMessage());
+        }
+
         s.close();
     }
-
     public static void main(String[] args) throws Exception {
         try {
             new Main().run(args);

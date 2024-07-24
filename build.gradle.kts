@@ -21,6 +21,7 @@ repositories {
 dependencies {
     api("com.skadistats:clarity:3.0.6")
     api("ch.qos.logback:logback-classic:1.4.14")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
 }
 
 File("src/main/java/skadistats/clarity/examples").walk().maxDepth(1).forEach {

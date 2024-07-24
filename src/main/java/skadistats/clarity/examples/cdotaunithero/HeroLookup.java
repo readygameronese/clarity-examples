@@ -32,6 +32,14 @@ public class HeroLookup {
         return heroClass.getFieldPathForName(format("CBodyComponent.m_%s", which));
     }
 
+
+    public Map<String, Object> getFieldValuesAsStringMap() {
+        Map<String, Object> stringFieldValues = new HashMap<>();
+        for (Map.Entry<FieldPath, Object> entry : fieldValues.entrySet()) {
+            stringFieldValues.put(entry.getKey().toString(), entry.getValue());
+        }
+        return stringFieldValues;
+    }
     public boolean isAnyFieldChanged(Entity e, FieldPath[] changedFieldPaths, int nChangedFieldPaths) {
         if (e != heroEntity) return false;
         return true;

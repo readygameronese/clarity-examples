@@ -1,4 +1,5 @@
-package skadistats.clarity.examples.cdotaunithero;
+package skadistats.clarity.examples.cdotaunithero; // Make sure this matches your package declaration
+
 import skadistats.clarity.io.Util;
 import skadistats.clarity.model.DTClass;
 import skadistats.clarity.model.Entity;
