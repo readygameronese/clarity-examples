@@ -18,6 +18,10 @@ public class HeroLookup {
         return fieldValues;
     }
 
+    public Entity getHeroEntity() {
+        return heroEntity;
+    } 
+
     public HeroLookup(Entity heroEntity) {
         this.heroEntity = heroEntity;
         DTClass heroClass = heroEntity.getDtClass();
