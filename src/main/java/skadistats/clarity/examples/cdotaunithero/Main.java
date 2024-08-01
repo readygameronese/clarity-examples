@@ -108,7 +108,7 @@ public class Main {
         log.info("total time taken: {}s", (tMatch) / 1000.0);
 
         // Save all hero updates to a single JSON file named "final_path.json"
-        String filename = "final_path.json";
+        String filename = args[0].replaceAll(".dem$", "_cdotaunithero.json"); 
         try (FileWriter file = new FileWriter(filename)) {
             objectMapper.writeValue(file, heroUpdates);
         } catch (IOException ex) {
