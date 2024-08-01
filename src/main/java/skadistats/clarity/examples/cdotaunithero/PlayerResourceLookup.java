@@ -1,4 +1,4 @@
-package skadistats.clarity.examples.cdotaunithero; // Make sure this matches your package declaration
+package skadistats.clarity.examples.cdotaunithero;
 
 import skadistats.clarity.io.Util;
 import skadistats.clarity.model.DTClass;
@@ -10,11 +10,13 @@ import static java.lang.String.format;
 public class PlayerResourceLookup {
 
     private final FieldPath fpSelectedHero;
+    private int selectedHeroHandle; // Store the selected hero handle
 
     public PlayerResourceLookup(DTClass playerResourceClass, int idx) {
         this.fpSelectedHero = playerResourceClass.getFieldPathForName(
                 format("m_vecPlayerTeamData.%s.m_hSelectedHero", Util.arrayIdxToString(idx))
         );
+        this.selectedHeroHandle = -1; // Initialize with an invalid handle
     }
 
     public boolean isSelectedHeroChanged(Entity playerResource, FieldPath[] changedFieldPaths, int nChangedFieldPaths) {
@@ -25,7 +27,9 @@ public class PlayerResourceLookup {
         return false;
     }
 
-    public int getSelectedHeroHandle(Entity playerResource) {
-        return playerResource.getPropertyForFieldPath(fpSelectedHero);
+    // Now requires the playerResource entity:
+    public int getSelectedHeroHandle(Entity playerResource) { 
+        this.selectedHeroHandle = playerResource.getPropertyForFieldPath(fpSelectedHero);
+        return this.selectedHeroHandle; 
     }
 }
