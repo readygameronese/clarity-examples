@@ -8,6 +8,7 @@ import skadistats.clarity.event.Insert;
 import skadistats.clarity.model.DTClass;
 import skadistats.clarity.model.Entity;
 import skadistats.clarity.model.FieldPath;
+import skadistats.clarity.model.Vector;
 import skadistats.clarity.processor.entities.Entities;
 import skadistats.clarity.processor.entities.OnEntityCreated;
 import skadistats.clarity.processor.entities.OnEntityDeleted;
@@ -93,7 +94,13 @@ public class Main {
             HeroLookup lookup = heroLookup[p];
             if (lookup == null) continue;
             if (lookup.isAnyFieldChanged(e, changedFieldPaths) && e.getHandle() == lookup.getHeroEntity().getHandle()) {
-                 Map<String, Object> changedValues = lookup.updateAndGetChangedFieldValues(e, changedFieldPaths);
+                Map<String, Object> changedValues = lookup.updateAndGetChangedFieldValues(e, changedFieldPaths);
+
+                if (lookup.isPositionChanged(e, changedFieldPaths)) {
+                    Vector newPosition = lookup.getPosition();
+                    changedValues.put("position", newPosition); // Add position to changedValues
+                }
+
                 if (!changedValues.isEmpty()) {
                     // Correctly put hero data into nested maps:
                     Map<Integer, Map<String, Object>> heroesMap =
