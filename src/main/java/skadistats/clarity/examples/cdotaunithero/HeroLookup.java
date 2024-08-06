@@ -63,8 +63,8 @@ public class HeroLookup {
 
 
     public boolean isAnyFieldChanged(Entity e, FieldPath[] changedFieldPaths) {
-        if (e != heroEntity) return false;
-        return changedFieldPaths.length > 0;
+        if (e.getHandle() != heroEntity.getHandle()) return false;
+         return changedFieldPaths.length > 0;
     }
 
 }

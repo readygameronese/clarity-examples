@@ -92,8 +92,8 @@ public class Main {
         for (int p = 0; p < 10; p++) {
             HeroLookup lookup = heroLookup[p];
             if (lookup == null) continue;
-            if (lookup.isAnyFieldChanged(e, changedFieldPaths)) {
-                Map<String, Object> changedValues = lookup.updateAndGetChangedFieldValues(e, changedFieldPaths);
+            if (lookup.isAnyFieldChanged(e, changedFieldPaths) && e.getHandle() == lookup.getHeroEntity().getHandle()) {
+                 Map<String, Object> changedValues = lookup.updateAndGetChangedFieldValues(e, changedFieldPaths);
                 if (!changedValues.isEmpty()) {
                     // Correctly put hero data into nested maps:
                     Map<Integer, Map<String, Object>> heroesMap =
@@ -109,9 +109,8 @@ public class Main {
         int itemHandle = e.getHandle();
         ItemLookup lookup = itemLookup.get(itemHandle);
         if (lookup == null) {
-            // Initialize the FieldPath first:
             itemLookup.put(itemHandle, new ItemLookup(e));
-            return;
+            return; // Don't process updates for newly created items yet
         }
 
         if (lookup.isAnyFieldChanged(e, changedFieldPaths)) {
