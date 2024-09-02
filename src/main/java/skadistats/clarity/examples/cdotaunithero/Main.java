@@ -19,7 +19,6 @@ import skadistats.clarity.processor.runner.SimpleRunner;
 import skadistats.clarity.processor.sendtables.DTClasses;
 import skadistats.clarity.processor.sendtables.OnDTClassesComplete;
 import skadistats.clarity.source.MappedFileSource;
-import skadistats.clarity.Clarity;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -32,6 +31,7 @@ public class Main {
 
     private final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private final Map<Integer, Map<Integer, Map<String, Object>>> heroUpdates = new TreeMap<>();
+    private final Map<Integer, Map<Integer, Map<String, Object>>> itemUpdates = new TreeMap<>();
     private final Logger log = LoggerFactory.getLogger(Main.class.getPackage().getClass());
 
     @Insert
@@ -61,8 +61,33 @@ public class Main {
     protected void onEntityUpdated(Entity e, FieldPath[] changedFieldPaths, int nChangedFieldPaths) {
         if (e.getDtClass() == playerResourceClass) {
             handlePlayerResourceUpdate(e, changedFieldPaths, nChangedFieldPaths);
-        } else {
+        } else if (e.getDtClass().getDtName().startsWith("CDOTA_Unit_Hero")) {
             handleHeroUpdate(e, changedFieldPaths);
+        } else if (e.getDtClass().getDtName().startsWith("CDOTA_Item")) {
+            handleItemUpdate(e, changedFieldPaths);
+        }
+    }
+
+    @OnEntityCreated
+    public void onEntityCreated(Context ctx, Entity e) {
+        if (e.getDtClass().getDtName().startsWith("CDOTA_Unit_Hero")) {
+            clearCachedState(e);
+            ensureFieldPathForEntityInitialized(e);
+            FieldPath lifeStatePath = getFieldPathForEntity(e);
+            if (lifeStatePath != null) {
+                processLifeStateChange(e, lifeStatePath);
+            }
+        } else if (e.getDtClass().getDtName().startsWith("CDOTA_Item")) {
+            handleItemUpdate(e, null);
+        }
+    }
+
+    @OnEntityDeleted
+    public void onEntityDeleted(Context ctx, Entity e) {
+        if (e.getDtClass().getDtName().startsWith("CDOTA_Unit_Hero")) {
+            clearCachedState(e);
+        } else if (e.getDtClass().getDtName().startsWith("CDOTA_Item")) {
+            itemUpdates.remove(e.getIndex());
         }
     }
 
@@ -95,39 +120,46 @@ public class Main {
         }
     }
 
+    private void handleItemUpdate(Entity e, FieldPath[] changedFieldPaths) {
+        Map<String, Object> changedValues = new HashMap<>();
+    
+        // Capture the item name
+        String itemName = e.getDtClass().getDtName();
+        changedValues.put("itemName", itemName);
+    
+        // Safely capture the player owner ID
+        try {
+            Integer playerOwnerId = e.getProperty("m_iPlayerOwnerID");
+            if (playerOwnerId != null) {
+                changedValues.put("playerOwnerID", playerOwnerId);
+            }
+        } catch (IllegalArgumentException ex) {
+            log.warn("Property 'm_iPlayerOwnerID' not found for entity class {}", e.getDtClass().getDtName());
+        }
+    
+        // Safely capture item charges if the property exists
+        try {
+            Integer itemCharges = e.getProperty("m_iCurrentCharges");
+            if (itemCharges != null) {
+                changedValues.put("charges", itemCharges);
+            }
+        } catch (IllegalArgumentException ex) {
+            log.warn("Property 'm_iCurrentCharges' not found for entity class {}", e.getDtClass().getDtName());
+        }
+    
+        // Add the collected information to itemUpdates if there are any changes
+        if (!changedValues.isEmpty()) {
+            itemUpdates.computeIfAbsent(currentTick, k -> new HashMap<>())
+                    .put(e.getIndex(), changedValues);
+        }
+    }
+    
+
     @OnTickEnd
     protected void onTickEnd(boolean synthetic) {
         deferredActions.forEach(Runnable::run);
         deferredActions.clear();
         currentTick++;
-    }
-
-    @OnEntityCreated
-    public void onCreated(Context ctx, Entity e) {
-        clearCachedState(e);
-        ensureFieldPathForEntityInitialized(e);
-        FieldPath lifeStatePath = getFieldPathForEntity(e);
-        if (lifeStatePath != null) {
-            processLifeStateChange(e, lifeStatePath);
-        }
-    }
-
-    @OnEntityUpdated
-    public void onUpdated(Context ctx, Entity e, FieldPath[] fieldPaths, int num) {
-        FieldPath lifeStatePath = getFieldPathForEntity(e);
-        if (lifeStatePath != null) {
-            for (int i = 0; i < num; i++) {
-                if (fieldPaths[i].equals(lifeStatePath)) {
-                    processLifeStateChange(e, lifeStatePath);
-                    break;
-                }
-            }
-        }
-    }
-
-    @OnEntityDeleted
-    public void onDeleted(Context ctx, Entity e) {
-        clearCachedState(e);
     }
 
     private void ensureFieldPathForEntityInitialized(Entity e) {
@@ -152,13 +184,13 @@ public class Main {
             currentLifeState.put(e.getIndex(), newState);
 
             // Only process if it's a hero unit
-            if (e.getDtClass().getDtName().startsWith("CDOTA_Unit_Hero_")) { 
+            if (e.getDtClass().getDtName().startsWith("CDOTA_Unit_Hero_")) {
                 int playerIndex = getPlayerIndexForHero(e);
-                if (playerIndex != -1) { 
-                    Map<String, Object> eventData = recordHeroEvent(playerIndex, newState); // Get eventData
-                    if (eventData != null) { // Check if eventData is valid
+                if (playerIndex != -1) {
+                    Map<String, Object> eventData = recordHeroEvent(playerIndex, newState);
+                    if (eventData != null) {
                         heroUpdates.computeIfAbsent(currentTick, k -> new HashMap<>())
-                            .put(playerIndex, eventData); 
+                            .put(playerIndex, eventData);
                     }
                 }
             }
@@ -174,9 +206,9 @@ public class Main {
         return -1;
     }
 
-    private Map<String, Object> recordHeroEvent(int playerIndex, int newState) { // Returns Map<String, Object> or null
+    private Map<String, Object> recordHeroEvent(int playerIndex, int newState) {
         String eventName = "";
-        Map<String, Object> eventData = new HashMap<>(); 
+        Map<String, Object> eventData = new HashMap<>();
 
         switch (newState) {
             case 0:
@@ -189,10 +221,10 @@ public class Main {
 
         if (!eventName.isEmpty()) {
             eventData.put("event", eventName);
-            return eventData; 
+            return eventData;
         }
 
-        return null; 
+        return null;
     }
 
     public void run(String[] args) throws Exception {
@@ -208,11 +240,20 @@ public class Main {
             }
         }
 
-        String filename = args[0].replaceAll(".dem$", "_cdotaunithero.json");
-        try (FileWriter file = new FileWriter(filename)) {
+        // Save hero updates
+        String heroFilename = args[0].replaceAll(".dem$", "_cdotaunithero.json");
+        try (FileWriter file = new FileWriter(heroFilename)) {
             objectMapper.writeValue(file, heroUpdates);
         } catch (IOException ex) {
-            log.error("Error writing JSON file: {}", ex.getMessage());
+            log.error("Error writing hero JSON file: {}", ex.getMessage());
+        }
+
+        // Save item updates
+        String itemFilename = args[0].replaceAll(".dem$", "_cdotaitem.json");
+        try (FileWriter file = new FileWriter(itemFilename)) {
+            objectMapper.writeValue(file, itemUpdates);
+        } catch (IOException ex) {
+            log.error("Error writing item JSON file: {}", ex.getMessage());
         }
     }
 
