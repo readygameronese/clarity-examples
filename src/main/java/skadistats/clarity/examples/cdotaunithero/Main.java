@@ -33,6 +33,8 @@ public class Main {
     private final Map<Integer, Map<Integer, Map<String, Object>>> heroUpdates = new TreeMap<>();
     private final Map<Integer, Map<Integer, Map<String, Object>>> itemUpdates = new TreeMap<>();
     private final Logger log = LoggerFactory.getLogger(Main.class.getPackage().getClass());
+    private final Map<Integer, Map<String, Object>> playerIDMapping = new HashMap<>();
+
 
     @Insert
     private DTClasses dtClasses;
@@ -98,9 +100,18 @@ public class Main {
                 int playerIndex = p;
                 deferredActions.add(() -> {
                     int heroHandle = lookup.getSelectedHeroHandle(e);
-                    System.out.format("Player %02d got assigned hero %d\n", playerIndex, heroHandle);
                     Entity heroEntity = entities.getByHandle(heroHandle);
-                    heroLookup[playerIndex] = new HeroLookup(heroEntity);
+                    HeroLookup heroLookup = new HeroLookup(heroEntity);
+    
+                    Integer playerID = heroLookup.getPlayerID();
+                    if (playerID != null) {
+                        // Populate the mapping
+                        Map<String, Object> playerInfo = new HashMap<>();
+                        playerInfo.put("playerIndex", playerIndex);
+                        playerInfo.put("heroName", heroEntity.getDtClass().getDtName());  // Optionally include hero name
+                        playerIDMapping.put(playerID, playerInfo);
+                    }
+                    this.heroLookup[playerIndex] = heroLookup;
                 });
             }
         }
@@ -243,16 +254,21 @@ public class Main {
                 r.getSource().close();
             }
         }
-
-        // Save hero updates
+    
+        // Prepare the final JSON structure
+        Map<String, Object> finalOutput = new LinkedHashMap<>();
+        finalOutput.put("playerIDMapping", playerIDMapping);
+        finalOutput.put("heroUpdates", heroUpdates);
+    
+        // Save hero updates along with playerIDMapping
         String heroFilename = args[0].replaceAll(".dem$", "_cdotaunithero.json");
         try (FileWriter file = new FileWriter(heroFilename)) {
-            objectMapper.writeValue(file, heroUpdates);
+            objectMapper.writeValue(file, finalOutput);
         } catch (IOException ex) {
             log.error("Error writing hero JSON file: {}", ex.getMessage());
         }
-
-        // Save item updates
+    
+        // Save item updates as usual
         String itemFilename = args[0].replaceAll(".dem$", "_cdotaitem.json");
         try (FileWriter file = new FileWriter(itemFilename)) {
             objectMapper.writeValue(file, itemUpdates);
