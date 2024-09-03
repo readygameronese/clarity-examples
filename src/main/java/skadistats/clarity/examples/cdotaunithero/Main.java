@@ -110,11 +110,15 @@ public class Main {
         for (int p = 0; p < 10; p++) {
             HeroLookup lookup = heroLookup[p];
             if (lookup == null) continue;
+    
+            Integer playerID = lookup.getPlayerID();
+            if (playerID == null) continue;  // Skip if playerID couldn't be retrieved
+    
             if (lookup.isAnyFieldChanged(e, changedFieldPaths)) {
                 Map<String, Object> changedValues = lookup.updateAndGetChangedFieldValues(e, changedFieldPaths);
                 if (!changedValues.isEmpty()) {
                     heroUpdates.computeIfAbsent(currentTick, k -> new HashMap<>())
-                            .put(p, changedValues);
+                            .put(playerID, changedValues);  // Use playerID as the key
                 }
             }
         }

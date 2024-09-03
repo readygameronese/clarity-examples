@@ -6,10 +6,13 @@ import skadistats.clarity.model.FieldPath;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static java.lang.String.format;
 
 public class HeroLookup {
+    private final Logger log = LoggerFactory.getLogger(Main.class.getPackage().getClass());
     private final Entity heroEntity;
     private final Map<FieldPath, Object> previousFieldValues = new HashMap<>();
     private final Map<FieldPath, Object> fieldValues = new HashMap<>();
@@ -24,25 +27,17 @@ public class HeroLookup {
 
     public HeroLookup(Entity heroEntity) {
         this.heroEntity = heroEntity;
-        DTClass heroClass = heroEntity.getDtClass();
-        initializeFieldValues(heroClass, "cellX");
-        initializeFieldValues(heroClass, "cellY");
-        initializeFieldValues(heroClass, "cellZ");
-        initializeFieldValues(heroClass, "vecX");
-        initializeFieldValues(heroClass, "vecY");
-        initializeFieldValues(heroClass, "vecZ");
     }
 
-    private void initializeFieldValues(DTClass heroClass, String which) {
-        FieldPath fieldPath = getBodyComponentFieldPath(heroClass, which);
-        Object value = heroEntity.getPropertyForFieldPath(fieldPath);
-        fieldValues.put(fieldPath, value);
-        previousFieldValues.put(fieldPath, value); 
+    public Integer getPlayerID() {
+        try {
+            return heroEntity.getProperty("m_iPlayerID");
+        } catch (IllegalArgumentException ex) {
+            log.warn("Property 'm_iPlayerID' not found for entity class {}", heroEntity.getDtClass().getDtName());
+            return null;
+        }
     }
 
-    private FieldPath getBodyComponentFieldPath(DTClass heroClass, String which) {
-        return heroClass.getFieldPathForName(format("CBodyComponent.m_%s", which));
-    }
 
     public Map<String, Object> updateAndGetChangedFieldValues(Entity e, FieldPath[] changedFieldPaths) {
         Map<String, Object> changedValues = new HashMap<>();
