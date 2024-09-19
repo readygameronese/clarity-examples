@@ -13,12 +13,14 @@ import skadistats.clarity.processor.entities.OnEntityCreated;
 import skadistats.clarity.processor.entities.OnEntityDeleted;
 import skadistats.clarity.processor.entities.OnEntityUpdated;
 import skadistats.clarity.processor.entities.UsesEntities;
+import skadistats.clarity.processor.reader.OnMessage;
 import skadistats.clarity.processor.reader.OnTickEnd;
 import skadistats.clarity.processor.runner.Context;
 import skadistats.clarity.processor.runner.SimpleRunner;
 import skadistats.clarity.processor.sendtables.DTClasses;
 import skadistats.clarity.processor.sendtables.OnDTClassesComplete;
 import skadistats.clarity.source.MappedFileSource;
+import skadistats.clarity.wire.shared.demo.proto.Demo;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -34,7 +36,10 @@ public class Main {
     private final Map<Integer, Map<Integer, Map<String, Object>>> itemUpdates = new TreeMap<>();
     private final Logger log = LoggerFactory.getLogger(Main.class.getPackage().getClass());
     private final Map<Integer, Map<String, Object>> playerIDMapping = new HashMap<>();
+    private Demo.CDemoFileInfo demoFileInfo; // Correct usage 
 
+    @Insert
+    private Context ctx; 
 
     @Insert
     private DTClasses dtClasses;
@@ -50,6 +55,8 @@ public class Main {
     private final Map<Integer, FieldPath> lifeStatePaths = new HashMap<>();
     private final Map<Integer, Integer> currentLifeState = new HashMap<>();
     private int currentTick = 0;
+    private int gameStartTick = -1;
+    private int gameEndTick = -1;
 
     @OnDTClassesComplete
     protected void onDtClassesComplete() {
@@ -102,7 +109,7 @@ public class Main {
                     int heroHandle = lookup.getSelectedHeroHandle(e);
                     Entity heroEntity = entities.getByHandle(heroHandle);
                     HeroLookup heroLookup = new HeroLookup(heroEntity);
-    
+
                     Integer playerID = heroLookup.getPlayerID();
                     if (playerID != null) {
                         // Populate the mapping
@@ -121,10 +128,10 @@ public class Main {
         for (int p = 0; p < 10; p++) {
             HeroLookup lookup = heroLookup[p];
             if (lookup == null) continue;
-    
+
             Integer playerID = lookup.getPlayerID();
             if (playerID == null) continue;  // Skip if playerID couldn't be retrieved
-    
+
             if (lookup.isAnyFieldChanged(e, changedFieldPaths)) {
                 Map<String, Object> changedValues = lookup.updateAndGetChangedFieldValues(e, changedFieldPaths);
                 if (!changedValues.isEmpty()) {
@@ -137,11 +144,11 @@ public class Main {
 
     private void handleItemUpdate(Entity e, FieldPath[] changedFieldPaths) {
         Map<String, Object> changedValues = new HashMap<>();
-    
+
         // Capture the item name
         String itemName = e.getDtClass().getDtName();
         changedValues.put("itemName", itemName);
-    
+
         // Safely capture the player owner ID
         try {
             Integer playerOwnerId = e.getProperty("m_iPlayerOwnerID");
@@ -151,7 +158,7 @@ public class Main {
         } catch (IllegalArgumentException ex) {
             log.warn("Property 'm_iPlayerOwnerID' not found for entity class {}", e.getDtClass().getDtName());
         }
-    
+
         // Safely capture item charges if the property exists
         try {
             Integer itemCharges = e.getProperty("m_iCurrentCharges");
@@ -161,17 +168,32 @@ public class Main {
         } catch (IllegalArgumentException ex) {
             log.warn("Property 'm_iCurrentCharges' not found for entity class {}", e.getDtClass().getDtName());
         }
-    
+
         // Add the collected information to itemUpdates if there are any changes
         if (!changedValues.isEmpty()) {
             itemUpdates.computeIfAbsent(currentTick, k -> new HashMap<>())
                     .put(e.getIndex(), changedValues);
         }
     }
-    
+
+
+    @OnMessage(Demo.CDemoFileInfo.class)  // Correct usage
+    public void onDemoFileInfo(Demo.CDemoFileInfo demoFileInfo) { // Correct usage
+        this.demoFileInfo = demoFileInfo; 
+    }
 
     @OnTickEnd
     protected void onTickEnd(boolean synthetic) {
+        if (gameStartTick == -1 && !playerIDMapping.isEmpty()) {
+            gameStartTick = currentTick; 
+        }
+        
+        // Correcting game end detection
+        if (gameStartTick != -1 && gameEndTick == -1 && 
+            demoFileInfo != null && ctx.getTick() == demoFileInfo.getPlaybackTicks() - 1) { 
+            gameEndTick = currentTick; 
+        }
+
         deferredActions.forEach(Runnable::run);
         deferredActions.clear();
         currentTick++;
@@ -205,7 +227,7 @@ public class Main {
                     Map<String, Object> eventData = recordHeroEvent(playerIndex, newState);
                     if (eventData != null) {
                         heroUpdates.computeIfAbsent(currentTick, k -> new HashMap<>())
-                            .put(playerIndex, eventData);
+                                .put(playerIndex, eventData);
                     }
                 }
             }
@@ -254,12 +276,32 @@ public class Main {
                 r.getSource().close();
             }
         }
-    
+
+        float tickRate = (float) demoFileInfo.getPlaybackTime() / demoFileInfo.getPlaybackTicks(); 
+        float gameStartTimeSeconds = gameStartTick * tickRate; 
+        float gameEndTimeSeconds = gameEndTick * tickRate; 
+        
+        log.info("tickRate: {}s", tickRate);
+        log.info("gameStartTime: {}s (tick {})", gameStartTimeSeconds, gameStartTick);
+        log.info("gameEndTime: {}s (tick {})", gameEndTimeSeconds, gameEndTick);
+        
+        int calculatedGameDurationTicks = gameEndTick - gameStartTick + 1; // +1 to include start tick 
+        log.info("Calculated game duration: {} ticks", calculatedGameDurationTicks);
+
+        if (calculatedGameDurationTicks != demoFileInfo.getPlaybackTicks()) {
+            log.warn("WARNING: Calculated game duration does not match demo playback ticks!");
+        }
+
         // Prepare the final JSON structure
         Map<String, Object> finalOutput = new LinkedHashMap<>();
         finalOutput.put("playerIDMapping", playerIDMapping);
         finalOutput.put("heroUpdates", heroUpdates);
-    
+        Map<String, Object> gameStartTime = new HashMap<>();
+        gameStartTime.put("seconds", gameStartTimeSeconds);
+        gameStartTime.put("tick", gameStartTick);
+        finalOutput.put("gameStartTime", gameStartTime); 
+        finalOutput.put("gameEndTime", gameEndTimeSeconds); // You can create a similar map for endTime if needed
+
         // Save hero updates along with playerIDMapping
         String heroFilename = args[0].replaceAll(".dem$", "_cdotaunithero.json");
         try (FileWriter file = new FileWriter(heroFilename)) {
@@ -267,7 +309,7 @@ public class Main {
         } catch (IOException ex) {
             log.error("Error writing hero JSON file: {}", ex.getMessage());
         }
-    
+
         // Save item updates as usual
         String itemFilename = args[0].replaceAll(".dem$", "_cdotaitem.json");
         try (FileWriter file = new FileWriter(itemFilename)) {
